@@ -164,7 +164,6 @@ public class DisplayConfigurationActivity extends AppCompatActivity
         if (!m_wifiHelper.isPasswordKnown(m_espConfiguration)) {
             createPasswordDialog(espAPString);
         }
-
     }
 
 
@@ -172,6 +171,7 @@ public class DisplayConfigurationActivity extends AppCompatActivity
         PasswordDialogFragment newPasswordFragment = PasswordDialogFragment.newInstance(i_SSID);
         newPasswordFragment.show(getFragmentManager(), "dialog");
     }
+
 
     public void acceptPassword(String i_SSID, String i_password) {
         if (i_password != null && !i_password.isEmpty() &&
