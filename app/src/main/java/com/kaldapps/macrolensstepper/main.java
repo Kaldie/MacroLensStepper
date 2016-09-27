@@ -1,10 +1,10 @@
 package com.kaldapps.macrolensstepper;
 
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
-import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
@@ -22,6 +22,9 @@ public class main extends AppCompatActivity {
      * See https://g.co/AppIndexing/AndroidStudio for more information.
      */
     private GoogleApiClient client;
+    private WifiHelper m_wifiHelper;
+    private ESPStepper m_stepper;
+    public static final String UpdateStringBroadcastMessage = "com.kaldapps.macrolensstepper.UpdatedESPStepper";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,6 +35,8 @@ public class main extends AppCompatActivity {
         // ATTENTION: This was auto-generated to implement the App Indexing API.
         // See https://g.co/AppIndexing/AndroidStudio for more information.
         client = new GoogleApiClient.Builder(this).addApi(AppIndex.API).build();
+        m_wifiHelper = new WifiHelper((WifiManager) getSystemService(Context.WIFI_SERVICE));
+        m_stepper = new ESPStepper();
     }
 
     @Override
@@ -59,8 +64,8 @@ public class main extends AppCompatActivity {
     public void startConfiguration(View view) {
         // start the configuration of the stepper stuff
         Intent intent = new Intent(this, DisplayConfigurationActivity.class);
+        intent.putExtra("ESPStepper",m_stepper);
         startActivity(intent);
-
     }
 
     @Override

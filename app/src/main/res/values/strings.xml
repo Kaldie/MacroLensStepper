@@ -21,9 +21,10 @@
     <string name="set_step_size">Configure step size</string>
     <string name="distance_traveled">Resulting distance</string>
     <string name="save_configuration">Save configuration</string>
-    <string name="configure_connection_text">Verify connection</string>
+    <string name="set_stepper_to_ap">Connect Stepper To Wifi</string>
+    <string name="configure_connection_text">Connect to Stepper</string>
     <string name="stepper_access_point">Stepper Access point</string>
-    <string name="normal_wifi">Normal Wifi</string>
+    <string name="normal_wifi">Selected AP</string>
     <string name="number_of_repetitions">Number of repetitions</string>
     <string name="number_of_repetitions_edit">as a whole number</string>
 </resources>

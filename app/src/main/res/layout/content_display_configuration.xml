@@ -35,26 +35,6 @@
 
             <TextView
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:textAppearance="?android:attr/textAppearanceMedium"
-                android:text="@string/stepper_access_point"
-                android:layout_weight="1"
-                android:textColor="#000000"/>
-
-            <Spinner
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:id="@+id/esp_ap_spinner"
-                android:layout_weight="1"/>
-        </LinearLayout>
-
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <TextView
-                android:layout_width="0dp"
                 android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:textAppearance="?android:attr/textAppearanceMedium"
@@ -68,14 +48,6 @@
                 android:layout_height="wrap_content"
                 android:id="@+id/normal_ap_spinner" />
         </LinearLayout>
-
-        <Button
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/configure_connection_text"
-            android:id="@+id/button2"
-            android:onClick="configureConnectionOnClick"/>
 
         <LinearLayout
             android:orientation="horizontal"
@@ -104,9 +76,18 @@
             style="?android:attr/buttonBarButtonStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/find_ip_text_button"
-            android:id="@+id/find_ip_button"
-            />
+            android:text="@string/configure_connection_text"
+            android:id="@+id/button2"
+            android:onClick="connectToStepper"/>
+
+        <Button
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_height="wrap_content"
+            android:text="@string/set_stepper_to_ap"
+            android:onClick="connectStepperToWifi"
+            android:id="@+id/button5"
+            android:layout_gravity="center_horizontal"
+            android:layout_width="match_parent"/>
     </LinearLayout>
 
     <LinearLayout
@@ -124,13 +105,14 @@
             android:textColor="#000000"
             android:textStyle="bold"/>
 
+
+
         <EditText
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:id="@+id/number_of_steps_config_edit"
             android:hint="@string/try_number_of_steps_text"
-            android:singleLine="false"
             android:inputType="number" />
 
         <LinearLayout
@@ -144,6 +126,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/go_in_button"
                 android:id="@+id/go_in_config_button"
+                android:onClick="go_in_button_clicked"
                 android:layout_weight="1" />
 
             <Button
@@ -152,6 +135,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/go_out_button"
                 android:id="@+id/go_out_config_button"
+                android:onClick="go_out_button_clicked"
                 android:layout_weight="1" />
         </LinearLayout>
 
@@ -176,14 +160,16 @@
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
         android:text="@string/save_configuration"
+        android:onClick="getStatus"
         android:id="@+id/button"
         android:layout_gravity="center_horizontal" />
+
     <TextView
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="?android:attr/textAppearanceMedium"
-        android:text="Will display your password here!"
-        android:id="@+id/passwordView"
+        android:text="Status bar!"
+        android:id="@+id/status_bar"
         android:textColor="#000000" />
 
 </LinearLayout>

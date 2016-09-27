@@ -1,55 +1,78 @@
 package com.kaldapps.macrolensstepper;
 
+
+
+import android.net.DhcpInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
-import android.support.annotation.Nullable;
-import android.support.v7.app.AppCompatActivity;
 
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketTimeoutException;
+import java.net.URL;
+import java.net.URLConnection;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Created by ruud on 29-7-16.
  */
-public class WifiHelper extends AppCompatActivity {
+
+class WifiHelper {
+    private static final String TAG = "Bitch";
     private WifiManager m_wifiManager;
     private String m_oldNetworkSSID;
     private boolean m_forcedConnection;
 
-    public WifiHelper(WifiManager i_manager) {
-         m_wifiManager = i_manager;
+    WifiHelper(WifiManager i_manager) {
+        m_wifiManager = i_manager;
         m_oldNetworkSSID = getCurrentConnectionSSID();
+        m_forcedConnection = false;
     }
 
-    public ArrayList<String> getScannedWifiAPs(boolean i_currentlyUsed) {
+
+    ArrayList<String> getScannedWifiAPs() {
         String currentConnection;
-        ArrayList<String> wifiSDD = new ArrayList<>();
-        if (i_currentlyUsed) {
-            currentConnection = getCurrentConnectionSSID();
-            if (!currentConnection.isEmpty()) {
-                wifiSDD.add(currentConnection);
-                return wifiSDD;
-            }
+        ArrayList<String> wifiSDDs = new ArrayList<>();
+        currentConnection = getCurrentConnectionSSID();
+        if (!currentConnection.isEmpty()) {
+            wifiSDDs.add(currentConnection);
         }
+
         List<ScanResult> wifiScanList = m_wifiManager.getScanResults();
+        String SSID;
         for (int i = 1; i < wifiScanList.size(); i++) {
-            wifiSDD.add((wifiScanList.get(i)).SSID);
-        }
-        for (String SSID : wifiSDD) {
-            if (SSID.contains("ESP")) {
-                wifiSDD.remove(wifiSDD.indexOf(SSID));
-                wifiSDD.add(0, SSID);
-                break;
+            SSID = wifiScanList.get(i).SSID;
+            if (!wifiScanList.get(i).SSID.equals(currentConnection)) {
+                wifiSDDs.add((wifiScanList.get(i)).SSID);
+                if (SSID.contains("ESP")) {
+                    wifiSDDs.remove(wifiSDDs.indexOf(SSID));
+                    wifiSDDs.add(1, SSID);
+                    break;
+                }
             }
         }
-        return wifiSDD;
+        return wifiSDDs;
     }
 
 
-    private String getCurrentConnectionSSID() {
+    String getCurrentConnectionSSID() {
         // get the current connection
         String currentConnectedSSID = "";
         WifiInfo currentWifiInfo = m_wifiManager.getConnectionInfo();
@@ -61,13 +84,13 @@ public class WifiHelper extends AppCompatActivity {
             case COMPLETED:
                 currentConnectedSSID = currentWifiInfo.getSSID();
                 break;
-            case FOUR_WAY_HANDSHAKE:
-            case GROUP_HANDSHAKE:
-            case SCANNING:
-                getCurrentConnectionSSID();
-                break;
         }
         return currentConnectedSSID;
+    }
+
+
+    Boolean isConnected() {
+        return !getCurrentConnectionSSID().equals("");
     }
 
 
@@ -84,7 +107,7 @@ public class WifiHelper extends AppCompatActivity {
     }
 
 
-    public WifiConfiguration getWifiConfigForSSID(String i_SSID) {
+    WifiConfiguration getWifiConfigForSSID(String i_SSID) {
         WifiConfiguration wifiConfig = getKnownWifiConfigForSSID(i_SSID);
         if (wifiConfig != null) {
             return wifiConfig;
@@ -147,7 +170,7 @@ public class WifiHelper extends AppCompatActivity {
     }
 
 
-    public static String convertStringToValidSSID(String i_ssid) {
+    static String convertStringToValidSSID(String i_ssid) {
         if (i_ssid.length() == 0) {
             return i_ssid;
         }
@@ -160,7 +183,19 @@ public class WifiHelper extends AppCompatActivity {
     }
 
 
-    public boolean isPasswordKnown(WifiConfiguration i_wifiConfiguration) {
+    private InetAddress getBroadcastAddress() throws IOException {
+        DhcpInfo dhcp = m_wifiManager.getDhcpInfo();
+        // handle null somehow
+
+        int broadcast = (dhcp.ipAddress & dhcp.netmask) | ~dhcp.netmask;
+        byte[] quads = new byte[4];
+        for (int k = 0; k < 4; k++)
+            quads[k] = (byte) (broadcast >> (k * 8));
+        return InetAddress.getByAddress(quads);
+    }
+
+
+    boolean isPasswordKnown(WifiConfiguration i_wifiConfiguration) {
         // check if we need a password
         if (i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.OPEN)) {
             if (i_wifiConfiguration.preSharedKey != null && !i_wifiConfiguration.preSharedKey.isEmpty()) {
@@ -180,7 +215,7 @@ public class WifiHelper extends AppCompatActivity {
     }
 
 
-    public void updateConfiguration(WifiConfiguration wifiConfiguration) {
+    void updateConfiguration(WifiConfiguration wifiConfiguration) {
         if (getKnownWifiConfigForSSID(wifiConfiguration.SSID) != null) {
             // configuration is known update it
             m_wifiManager.updateNetwork(wifiConfiguration);
@@ -194,7 +229,7 @@ public class WifiHelper extends AppCompatActivity {
     }
 
 
-    public boolean forceConnection(WifiConfiguration i_configuration) {
+    boolean forceConnection(WifiConfiguration i_configuration) {
         m_forcedConnection = true;
         m_wifiManager.disconnect();
         m_wifiManager.enableNetwork(i_configuration.networkId,true);
@@ -202,21 +237,164 @@ public class WifiHelper extends AppCompatActivity {
     }
 
 
-    public void restoreOldConnection() {
+    void restoreOldConnection() {
         // if the wifi helper is used to connect to a specific network, it will remember which network it previously was attached to.
         // Calling this function will ensure that the previously attached network will be re-enabled
         if (m_forcedConnection) {
             List<WifiConfiguration> wifiConfigurations = m_wifiManager.getConfiguredNetworks();
-            // for the connection
-            for (WifiConfiguration config : wifiConfigurations) {
-                if (config.SSID.equals(m_oldNetworkSSID)) {
-                    forceConnection(config);
+            if (wifiConfigurations != null) {
+                // for the connection
+                for (WifiConfiguration config : wifiConfigurations) {
+                    if (config.SSID.equals(m_oldNetworkSSID)) {
+                        forceConnection(config);
+                    }
+                }
+                // then enable the other networks
+                for (WifiConfiguration config : wifiConfigurations) {
+                    m_wifiManager.enableNetwork(config.networkId, false);
                 }
             }
-            // then enable the other networks
-            for (WifiConfiguration config : wifiConfigurations) {
-                m_wifiManager.enableNetwork(config.networkId, false);
-            }
         }
+    }
+
+
+    void sendUDPMessage(final String msg, final int i_port) {
+        InetAddress address = null;
+        try {
+            address = getBroadcastAddress();
+            DatagramSocket clientSocket = new DatagramSocket(1025);
+            clientSocket.setBroadcast(true);
+
+            byte[] sendData;
+            sendData = msg.getBytes();
+            DatagramPacket sendPacket = new DatagramPacket(sendData,
+                    sendData.length, getBroadcastAddress(), i_port);
+            sendPacket.setPort(i_port);
+            clientSocket.send(sendPacket);
+
+            clientSocket.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        System.out.println("Broadcast address: " + address.toString());
+        System.out.println(" sending upd message!");
+    }
+
+
+    String receiveUDPMessage(int i_port, int i_length) {
+        byte[] buf = new byte[i_length];
+        DatagramPacket packet = new DatagramPacket(buf, buf.length);
+        DatagramSocket receive_socket = null;
+        try {
+            // Prepare a UDP-Packet that can contain the data we want to receive
+            receive_socket = new DatagramSocket(i_port);
+            // Receive the UDP-Packet
+            receive_socket.setSoTimeout(5000);
+            receive_socket.setReuseAddress(true);
+            receive_socket.receive(packet);
+            receive_socket.close();
+        } catch (SocketTimeoutException e) {
+            System.out.println("Bitch didn't respond");
+            return "";
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (receive_socket != null)
+            receive_socket.close();
+        }
+        return new String(packet.getData());
+    }
+
+
+    static private String getHtml(final String i_ip, final String i_addition) {
+        String url = "http://" + i_ip + "/" + i_addition;
+        StringBuilder htmlOutput = null;
+        try {
+            // Build and set timeout values for the request.
+            URLConnection connection = (new URL(url)).openConnection();
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+            connection.connect();
+
+            // Read and store the result line by line then return the entire string.
+            InputStream in = connection.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+            htmlOutput = new StringBuilder();
+            for (String line; (line = reader.readLine()) != null; ) {
+                htmlOutput.append(line);
+            }
+            in.close();
+        } catch ( IOException e) {
+            e.printStackTrace();
+        }
+
+        if (htmlOutput != null) {
+            return htmlOutput.toString();
+        } else {
+            return "";
+        }
+    }
+
+
+    static private String sendHtml(final String i_ip, final String i_addition, final String i_payload) {
+        String url = "http://" + i_ip + "/" + i_addition;
+        OutputStreamWriter streamWriter;
+        StringBuilder htmlOutput = null;
+        try {
+            URLConnection connection = (new URL(url)).openConnection();
+            connection.setDoOutput(true);
+            connection.setDoInput(true);
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Accept", "application/json");
+            streamWriter = new OutputStreamWriter(connection.getOutputStream());
+            connection.setConnectTimeout(500);
+            connection.setReadTimeout(500);
+            streamWriter.write(i_payload);
+            streamWriter.close();
+
+            InputStream inputStream = connection.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            htmlOutput = new StringBuilder();
+            for (String line; (line = reader.readLine()) != null; ) {
+                System.out.println(line);
+                htmlOutput.append(line);
+            }
+            inputStream.close();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        if (htmlOutput != null) {
+            return htmlOutput.toString();
+        } else {
+            return "";
+        }
+    }
+
+
+    @Nullable
+    static JSONObject getJson(final String i_ip, final String i_addition) {
+        String htmlString = getHtml(i_ip, i_addition);
+        if (htmlString.equals("")) {
+            return null;
+        }
+        JSONObject jObj = null;
+        try {
+            jObj = new JSONObject(htmlString);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        if (jObj != null) {
+            return jObj;
+        } else {
+            return jObj;
+        }
+    }
+
+
+    static String sendJson(final JSONObject jsonObj, final String i_ip, final String i_addition) {
+        return sendHtml(i_ip, i_addition, jsonObj.toString());
     }
 }
