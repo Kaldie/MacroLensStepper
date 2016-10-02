@@ -24,7 +24,12 @@
     <string name="set_stepper_to_ap">Connect Stepper To Wifi</string>
     <string name="configure_connection_text">Connect to Stepper</string>
     <string name="stepper_access_point">Stepper Access point</string>
-    <string name="normal_wifi">Selected AP</string>
+    <string name="normal_wifi">Select Wifi</string>
     <string name="number_of_repetitions">Number of repetitions</string>
     <string name="number_of_repetitions_edit">as a whole number</string>
+    <string name="esp_access_point_name">ESP Access point name:</string>
+    <string name="enter_esp_password">Enter ESP password</string>
+    <string name="home_wifi">Home wifi</string>
+    <string name="enter_wifi_password">Enter wifi password</string>
+    <string name="connect_stepper_to_wifi">Connect stepper to Wifi</string>
 </resources>
