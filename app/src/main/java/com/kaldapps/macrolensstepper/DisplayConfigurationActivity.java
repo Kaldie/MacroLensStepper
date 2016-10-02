@@ -19,25 +19,21 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.android.gms.appindexing.Action;
-import com.google.android.gms.appindexing.AppIndex;
-import com.google.android.gms.common.api.GoogleApiClient;
 
-import java.util.ArrayList;
-
-public class DisplayConfigurationActivity extends AppCompatActivity
-        implements AdapterView.OnItemSelectedListener {
+public class DisplayConfigurationActivity extends AppCompatActivity {
 
     /**
      * ATTENTION: This was auto-generated to implement the App Indexing API.
      * See https://g.co/AppIndexing/AndroidStudio for more information.
      */
-    private GoogleApiClient client;
+
     WifiHelper m_wifiHelper;
     WifiConfiguration m_wifiConfiguration;
     ESPStepper m_stepper;
+    static final int CONNECT_STEPPER_TO_WIFI_ACTIVITY = 0;
 
-    private BroadcastReceiver m_broadcastReceiver = new BroadcastReceiver() {
+
+    private BroadcastReceiver m_requestUpdateUIReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             System.out.println("Updating DisplayConfigurationActivity ui: " +
@@ -56,50 +52,25 @@ public class DisplayConfigurationActivity extends AppCompatActivity
         setContentView(R.layout.activity_display_configuration);
         // ATTENTION: This was auto-generated to implement the App Indexing API.
         // See https://g.co/AppIndexing/AndroidStudio for more information.
-        client = new GoogleApiClient.Builder(this).addApi(AppIndex.API).build();
 
         m_wifiHelper = new WifiHelper((WifiManager) getSystemService(Context.WIFI_SERVICE));
         m_wifiConfiguration = new WifiConfiguration();
 
         m_stepper = getIntent().getParcelableExtra("ESPStepper");
-
-        // get the wifi BSSD
-        Spinner normalSpinner = (Spinner) findViewById(R.id.normal_ap_spinner);
-        populateSpinner(normalSpinner);
-        normalSpinner.setOnItemSelectedListener(this);
+        initialiseSpinner();
     }
 
-
-    @Override
-    public void onStart() {
-        super.onStart();
-        // ATTENTION: This was auto-generated to implement the App Indexing API.
-        // See https://g.co/AppIndexing/AndroidStudio for more information.
-        client.connect();
-        Action viewAction = Action.newAction(
-                Action.TYPE_VIEW, // TODO: choose an action type.
-                "DisplayConfiguration Page", // TODO: Define a title for the content shown.
-                // TODO: If you have web page content that matches this app activity's content,
-                // make sure this auto-generated web page URL is correct.
-                // Otherwise, set the URL to null.
-                Uri.parse("http://host/path"),
-                // TODO: Make sure this auto-generated app URL is correct.
-                Uri.parse("android-app://com.kaldapps.macrolensstepper/http/host/path")
-        );
-        AppIndex.AppIndexApi.end(client, viewAction);
-        client.disconnect();
-    }
 
     @Override
     public void onPause() {
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(m_broadcastReceiver);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(m_requestUpdateUIReceiver);
         super.onPause();
     }
 
     @Override
     public void onResume() {
         // create the local broadcast manager to do stuff later
-        LocalBroadcastManager.getInstance(this).registerReceiver(m_broadcastReceiver,
+        LocalBroadcastManager.getInstance(this).registerReceiver(m_requestUpdateUIReceiver,
                 new IntentFilter(ESPStepper.m_UPDATE_STEPPER_INTENT));
         super.onResume();
     }
@@ -108,39 +79,47 @@ public class DisplayConfigurationActivity extends AppCompatActivity
     private void updateUI() {
         TextView x = ((TextView) findViewById(R.id.status_bar));
         x.setText(String.format("Established connection: %b", m_stepper.hasConnection()));
-        EditText ipEdit = (EditText) findViewById(R.id.ip_adres_edit);
+        TextView ipEdit = (TextView) findViewById(R.id.ip_address_text_view);
         ipEdit.setText(m_stepper.ipAddress());
 
     }
 
 
-    private void populateSpinner(Spinner i_spinner) {
+    void initialiseSpinner() {
+        Spinner spinner = (Spinner) findViewById(R.id.normal_ap_spinner);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_item, m_wifiHelper.getScannedWifiAPs());
-        i_spinner.setAdapter(adapter);
-    }
-
-
-    public void onItemSelected(AdapterView<?> parent, View view,
-                               int pos, long id) {
-        establishWifiConfiguration();
-    }
-
-    // is an abstract method from the derived class, this needs to be implemented
-    public void onNothingSelected(AdapterView<?> parent) {
+        spinner.setAdapter(adapter);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> parent, View view,
+                                       int pos, long id) {
+                establishWifiConfiguration();
+            }
+            // is an abstract method from the derived class, this needs to be implemented
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
     }
 
 
     public void connectToStepper(View view) {
+        // get the selected AP
         String selectedAP =
                 ((Spinner) findViewById(R.id.normal_ap_spinner)).getSelectedItem().toString();
+        // if the AP is equal to the one we are currently connected to
         if (m_wifiHelper.getCurrentConnectionSSID().equals(
                 WifiHelper.convertStringToValidSSID(selectedAP))) {
+            // attempt a connection to the stepper
+            // this will trigger a series of upd conversations.
+            // they will update the m_stepper variable and trigger an ui update broadcast
             m_stepper.attemptConnection(m_wifiHelper, this);
+            // let the user know that we are doing something
             Toast.makeText(this,
                     "Connecting to Stepper.", Toast.LENGTH_SHORT).show();
             return;
         }
+        // we are not connected to the user a-pointed AP.
+        // Connect to this and let the user try again in a sec
         Toast.makeText(this,
                 "Connecting to selected AP. Retry in a moment", Toast.LENGTH_SHORT).show();
         m_wifiHelper.forceConnection(
@@ -149,22 +128,8 @@ public class DisplayConfigurationActivity extends AppCompatActivity
 
 
     public void connectStepperToWifi(View view) {
-        ArrayList<String> scannedAP = m_wifiHelper.getScannedWifiAPs();
-        String espAP = scannedAP.get(1);
-        if (!espAP.contains("ESP")) {
-            Toast.makeText(this,"Cannot find the ESP stepper. Please check if its turned on",
-                    Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (!espAP.equals(m_wifiHelper.getCurrentConnectionSSID())) {
-            WifiConfiguration espConfiguration = m_wifiHelper.getWifiConfigForSSID(espAP);
-            if (!m_wifiHelper.isPasswordKnown(espConfiguration)) {
-                createPasswordDialog(espConfiguration.SSID);
-                Toast.makeText(this,
-                        "Enter password and retry", Toast.LENGTH_SHORT).show();
-            }
-        }
-
+        Intent connectStepperToWifiIntent= new Intent(this,StepperConnectionActivity.class);
+        startActivity(connectStepperToWifiIntent);
     }
 
     public void getStatus(View view) {

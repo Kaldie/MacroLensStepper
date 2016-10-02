@@ -9,6 +9,7 @@ import android.os.AsyncTask;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import android.widget.Toast;
 
 import org.json.JSONException;
@@ -16,6 +17,7 @@ import org.json.JSONObject;
 
 
 class ESPStepper implements Parcelable {
+    private static final String TAG = "ESPStepper";
     private static final String m_ESP_UPD_MESSAGE = "Are You Espressif IOT Smart Device?";
     private static final int m_UDP_PORT = 1025;
     private String m_connectedAP = "unknown";
@@ -25,7 +27,6 @@ class ESPStepper implements Parcelable {
     private StepperStatus m_stepperStatus = StepperStatus.Unknown;
 
     static final String m_UPDATE_STEPPER_INTENT = "update_stepper_intent";
-
 
     enum ConnectionStatus {
         Idle, GotIP, Connecting, NoApFound, WrongPassword, ConnectFail, Unknown}
@@ -178,6 +179,7 @@ class ESPStepper implements Parcelable {
             protected void onPostExecute(Object o) {
                 Intent intent = new Intent(m_UPDATE_STEPPER_INTENT);
                 intent.putExtra(main.UpdateStringBroadcastMessage, true);
+                m_connectedAP = i_helper.getCurrentConnectionSSID();
                 LocalBroadcastManager.getInstance(i_context).sendBroadcast(intent);
             }
         }.execute();
@@ -266,6 +268,7 @@ class ESPStepper implements Parcelable {
             readyObject.put("Stepper_Config", new JSONObject().put("status","Ready"));
         } catch (JSONException e) {
             e.printStackTrace();
+            return;
         }
 
         new AsyncTask() {
@@ -279,5 +282,39 @@ class ESPStepper implements Parcelable {
                 return "";
             }
         }.execute(outerObject, readyObject);
+    }
+
+
+    @SuppressWarnings("unchecked")
+    void connectToAP(Context i_context, String i_ssid, String i_password) {
+        Log.d(TAG, "Some1 wanted to make u connect to another AP");
+        if(!hasConnection()) {
+            Toast.makeText(i_context, "Do not have a valid connection!",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String token = "1234567890123456789012345678901234567890";
+        JSONObject outerObject = new JSONObject();
+        JSONObject commandObject = new JSONObject();
+        try {
+            commandObject.put("SSID", i_ssid);
+            commandObject.put("password", i_password);
+            commandObject.put("token", token);
+            outerObject.put("Request",
+                    new JSONObject().put("Station",
+                            new JSONObject().put("Connect_Station", commandObject)));
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return;
+        }
+
+        new AsyncTask() {
+            @Override
+            protected Object doInBackground(Object[] obj) {
+                JSONObject firstObject = (JSONObject)obj[0];
+                WifiHelper.sendJson(firstObject, m_currentIP, "config?command=wifi");
+                WifiHelper.getJson(m_currentIP,"config?command=reboot");
+                return "";
+            }
+        }.execute(outerObject);
     }
 }

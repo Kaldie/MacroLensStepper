@@ -11,6 +11,7 @@ import android.net.wifi.WifiManager;
 
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
 
 import org.json.JSONException;
@@ -35,7 +36,7 @@ import java.util.List;
  */
 
 class WifiHelper {
-    private static final String TAG = "Bitch";
+    private static final String TAG = "WifiHelper";
     private WifiManager m_wifiManager;
     private String m_oldNetworkSSID;
     private boolean m_forcedConnection;
@@ -118,7 +119,7 @@ class WifiHelper {
 
 
     private WifiConfiguration makeConfiguration(String i_ap) {
-        System.out.println("makeConfiguration!!");
+        Log.d(TAG,"makeConfiguration!!");
         List<ScanResult> scanResults = m_wifiManager.getScanResults();
         WifiConfiguration configuration = new WifiConfiguration();
         for (final ScanResult scanResult : scanResults) {
@@ -212,6 +213,13 @@ class WifiHelper {
         }
         // there is key management, but there is no known password
         return false;
+    }
+
+
+    static Boolean hasPassword(WifiConfiguration i_wifiConfiguration) {
+        return i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.OPEN) ||
+                i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.SHARED) ||
+                i_wifiConfiguration.preSharedKey.length() != 0;
     }
 
 
@@ -379,18 +387,14 @@ class WifiHelper {
         if (htmlString.equals("")) {
             return null;
         }
-        JSONObject jObj = null;
+        JSONObject jObj;
         try {
             jObj = new JSONObject(htmlString);
         } catch (JSONException e) {
             e.printStackTrace();
+            return null;
         }
-
-        if (jObj != null) {
-            return jObj;
-        } else {
-            return jObj;
-        }
+        return jObj;
     }
 
 

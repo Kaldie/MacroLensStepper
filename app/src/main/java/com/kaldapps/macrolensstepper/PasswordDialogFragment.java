@@ -4,8 +4,10 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.net.wifi.WifiConfiguration;
 import android.os.Bundle;
+import android.support.v4.content.LocalBroadcastManager;
 import android.text.method.PasswordTransformationMethod;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -14,10 +16,7 @@ import android.widget.TextView;
  * Created by ruud on 30-7-16.
  */
 public class PasswordDialogFragment extends DialogFragment {
-    public enum TypeOfConnection {
-        NORMAL,
-        ESP
-    }
+    public final static String PASSWORD_RECEIVED_INTENT_TAG = "PASSWORD_RECEIVED";
 
 
     public static PasswordDialogFragment newInstance(String i_ssid) {
@@ -41,7 +40,10 @@ public class PasswordDialogFragment extends DialogFragment {
                 .setPositiveButton("OK", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int whichButton) {
                         String password = passwordEditText.getText().toString();
-                        ((DisplayConfigurationActivity)getActivity()).acceptPassword(ssid, password);
+                        Intent broadcastIntent = new Intent(PASSWORD_RECEIVED_INTENT_TAG);
+                        broadcastIntent.putExtra("AP", ssid);
+                        broadcastIntent.putExtra("Password", password);
+                        LocalBroadcastManager.getInstance(getActivity()).sendBroadcast(broadcastIntent);
                     }
                 })
                 .create();

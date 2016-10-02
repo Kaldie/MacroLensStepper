@@ -11,9 +11,6 @@ import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 
-import com.google.android.gms.appindexing.Action;
-import com.google.android.gms.appindexing.AppIndex;
-import com.google.android.gms.common.api.GoogleApiClient;
 
 public class main extends AppCompatActivity {
 
@@ -21,10 +18,10 @@ public class main extends AppCompatActivity {
      * ATTENTION: This was auto-generated to implement the App Indexing API.
      * See https://g.co/AppIndexing/AndroidStudio for more information.
      */
-    private GoogleApiClient client;
     private WifiHelper m_wifiHelper;
     private ESPStepper m_stepper;
     public static final String UpdateStringBroadcastMessage = "com.kaldapps.macrolensstepper.UpdatedESPStepper";
+    static final String ESP_STEPPER_PARCLE_NAME = "ESP_STEPPER";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,9 +29,6 @@ public class main extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        // ATTENTION: This was auto-generated to implement the App Indexing API.
-        // See https://g.co/AppIndexing/AndroidStudio for more information.
-        client = new GoogleApiClient.Builder(this).addApi(AppIndex.API).build();
         m_wifiHelper = new WifiHelper((WifiManager) getSystemService(Context.WIFI_SERVICE));
         m_stepper = new ESPStepper();
     }
@@ -64,47 +58,7 @@ public class main extends AppCompatActivity {
     public void startConfiguration(View view) {
         // start the configuration of the stepper stuff
         Intent intent = new Intent(this, DisplayConfigurationActivity.class);
-        intent.putExtra("ESPStepper",m_stepper);
+        intent.putExtra(ESP_STEPPER_PARCLE_NAME,m_stepper);
         startActivity(intent);
-    }
-
-    @Override
-    public void onStart() {
-        super.onStart();
-
-        // ATTENTION: This was auto-generated to implement the App Indexing API.
-        // See https://g.co/AppIndexing/AndroidStudio for more information.
-        client.connect();
-        Action viewAction = Action.newAction(
-                Action.TYPE_VIEW, // TODO: choose an action type.
-                "Macro Lens Stepper", // TODO: Define a title for the content shown.
-                // TODO: If you have web page content that matches this app activity's content,
-                // make sure this auto-generated web page URL is correct.
-                // Otherwise, set the URL to null.
-                Uri.parse("http://host/path"),
-                // TODO: Make sure this auto-generated app URL is correct.
-                Uri.parse("android-app://com.kaldapps.macrolensstepper/http/host/path")
-        );
-        AppIndex.AppIndexApi.start(client, viewAction);
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-
-        // ATTENTION: This was auto-generated to implement the App Indexing API.
-        // See https://g.co/AppIndexing/AndroidStudio for more information.
-        Action viewAction = Action.newAction(
-                Action.TYPE_VIEW, // TODO: choose an action type.
-                "main Page", // TODO: Define a title for the content shown.
-                // TODO: If you have web page content that matches this app activity's content,
-                // make sure this auto-generated web page URL is correct.
-                // Otherwise, set the URL to null.
-                Uri.parse("http://host/path"),
-                // TODO: Make sure this auto-generated app URL is correct.
-                Uri.parse("android-app://com.kaldapps.macrolensstepper/http/host/path")
-        );
-        AppIndex.AppIndexApi.end(client, viewAction);
-        client.disconnect();
     }
 }
