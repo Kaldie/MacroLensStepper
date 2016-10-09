@@ -7,7 +7,8 @@
     <string name="distance_to_travel_edit">in millimeter</string>
     <string name="radio_button_direction_in">In</string>
     <string name="radio_button_direction_out">Out</string>
-    <string name="start_button">Start</string>
+    <string name="main_start_button">Start</string>
+    <string name="main_stop_button">Stop</string>
     <string name="configure_button">Configure</string>
     <string name="current_status_text">Current Status:</string>
     <string name="title_activity_configuration">configuration</string>
@@ -32,4 +33,7 @@
     <string name="home_wifi">Home wifi</string>
     <string name="enter_wifi_password">Enter wifi password</string>
     <string name="connect_stepper_to_wifi">Connect stepper to Wifi</string>
+    <string name="time_between_steps">Time between steps</string>
+    <string name="in_seconds">in seconds</string>
+    <string name="main_speed_text">Speed</string>
 </resources>

@@ -1,10 +1,10 @@
 package com.kaldapps.macrolensstepper;
 
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.Uri;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
@@ -22,16 +22,8 @@ import android.widget.Toast;
 
 public class DisplayConfigurationActivity extends AppCompatActivity {
 
-    /**
-     * ATTENTION: This was auto-generated to implement the App Indexing API.
-     * See https://g.co/AppIndexing/AndroidStudio for more information.
-     */
-
     WifiHelper m_wifiHelper;
-    WifiConfiguration m_wifiConfiguration;
     ESPStepper m_stepper;
-    static final int CONNECT_STEPPER_TO_WIFI_ACTIVITY = 0;
-
 
     private BroadcastReceiver m_requestUpdateUIReceiver = new BroadcastReceiver() {
         @Override
@@ -46,17 +38,23 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
     };
 
 
+    private BroadcastReceiver m_passwordDialogReceived = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String ap = intent.getStringExtra("AP");
+            String password = intent.getStringExtra("Password");
+            m_wifiHelper.acceptPassword(ap,password);
+        }
+    };
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_display_configuration);
-        // ATTENTION: This was auto-generated to implement the App Indexing API.
-        // See https://g.co/AppIndexing/AndroidStudio for more information.
 
         m_wifiHelper = new WifiHelper((WifiManager) getSystemService(Context.WIFI_SERVICE));
-        m_wifiConfiguration = new WifiConfiguration();
-
-        m_stepper = getIntent().getParcelableExtra("ESPStepper");
+        m_stepper = getIntent().getParcelableExtra(main.ESP_STEPPER_PARCLE_NAME);
         initialiseSpinner();
     }
 
@@ -64,6 +62,7 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
     @Override
     public void onPause() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(m_requestUpdateUIReceiver);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(m_passwordDialogReceived);
         super.onPause();
     }
 
@@ -71,7 +70,9 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
     public void onResume() {
         // create the local broadcast manager to do stuff later
         LocalBroadcastManager.getInstance(this).registerReceiver(m_requestUpdateUIReceiver,
-                new IntentFilter(ESPStepper.m_UPDATE_STEPPER_INTENT));
+                new IntentFilter(ESPStepper.UPDATE_STEPPER_INTENT));
+        LocalBroadcastManager.getInstance(this).registerReceiver(m_passwordDialogReceived,
+                new IntentFilter(PasswordDialogFragment.PASSWORD_RECEIVED_INTENT_TAG));
         super.onResume();
     }
 
@@ -90,10 +91,11 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
         ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this, android.R.layout.simple_spinner_item, m_wifiHelper.getScannedWifiAPs());
         spinner.setAdapter(adapter);
+        spinner.setSelection(0, false);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> parent, View view,
                                        int pos, long id) {
-                establishWifiConfiguration();
+                establishWifiConnection();
             }
             // is an abstract method from the derived class, this needs to be implemented
             public void onNothingSelected(AdapterView<?> parent) {
@@ -136,6 +138,32 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
         m_stepper.aSyncGetStatus(this);
     }
 
+
+    public void configStepSize(View view) {
+        String numberString =
+                ((EditText)findViewById(R.id.number_of_steps_config_edit)).getText().toString();
+        int numberOfSteps=0;
+        double milimeters=0.0;
+        if (numberString.length()>0) {
+            numberOfSteps = Integer.parseInt(numberString);
+        }
+        numberString =
+                ((EditText)findViewById(R.id.number_of_steps_config_edit)).getText().toString();
+        if (numberString.length()>0) {
+            milimeters = Double.parseDouble(numberString);
+        }
+        if (numberOfSteps > 0 && milimeters > 0) {
+            m_stepper.setMmPerStep(milimeters/numberOfSteps);
+            Intent returnIntent = new Intent();
+            returnIntent.putExtra(main.ESP_STEPPER_PARCLE_NAME, m_stepper);
+            setResult(Activity.RESULT_OK, returnIntent);
+            finish();
+        } else {
+            Toast.makeText(this,"Please set the number of steps and the resulting distance!",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
     public void go_in_button_clicked(View view) {
         move_steps(false);
     }
@@ -154,7 +182,7 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
 
 
 
-    private void establishWifiConfiguration() {
+    private void establishWifiConnection() {
         String normalAP = WifiHelper.convertStringToValidSSID(
                 ((Spinner) findViewById(R.id.normal_ap_spinner)).getSelectedItem().toString());
 
@@ -165,10 +193,10 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
             return;
         }
         // attempt to get the config from the known ones
-        m_wifiConfiguration = m_wifiHelper.getWifiConfigForSSID(
+        WifiConfiguration configuration = m_wifiHelper.getWifiConfigForSSID(
                 WifiHelper.convertStringToValidSSID(normalAP));
         // if we need a password, let it be provided by the user
-        if (!m_wifiHelper.isPasswordKnown(m_wifiConfiguration)) {
+        if (m_wifiHelper.hasPassword(configuration) && !m_wifiHelper.isPasswordKnown(configuration)) {
             createPasswordDialog(normalAP);
         }
     }
@@ -178,26 +206,4 @@ public class DisplayConfigurationActivity extends AppCompatActivity {
         PasswordDialogFragment newPasswordFragment = PasswordDialogFragment.newInstance(i_SSID);
         newPasswordFragment.show(getFragmentManager(), "dialog");
     }
-
-
-    public void acceptPassword(String i_SSID, String i_password) {
-        if (i_password != null && !i_password.isEmpty() &&
-                i_SSID != null && !i_SSID.isEmpty()) {
-            i_SSID = WifiHelper.convertStringToValidSSID(i_SSID);
-            System.out.println("Password '" + i_password + "' is selected for ssid: " + i_SSID + " !");
-            WifiConfiguration wifiConfiguration = null;
-            if (i_SSID.compareTo(m_wifiConfiguration.SSID) == 0) {
-                m_wifiConfiguration.preSharedKey = "\"" + i_password + "\"";
-                wifiConfiguration = m_wifiConfiguration;
-            } else {
-                System.out.println("Trying to set a password of an unknown SSID!");
-            }
-            if (wifiConfiguration != null) {
-                m_wifiHelper.updateConfiguration(wifiConfiguration);
-                m_wifiHelper.forceConnection(wifiConfiguration);
-            }
-        }
-    }
-
-
 }

@@ -20,18 +20,27 @@ class ESPStepper implements Parcelable {
     private static final String TAG = "ESPStepper";
     private static final String m_ESP_UPD_MESSAGE = "Are You Espressif IOT Smart Device?";
     private static final int m_UDP_PORT = 1025;
+    public static final int MAX_SPEED = 10;
+    public static final int MIN_SPEED = 1000;
     private String m_connectedAP = "unknown";
     private String m_currentIP = "unknown";
     private double m_mmPerStep = 0;
+    private int m_speed = 1000;
+
     private ConnectionStatus m_connectionStatus = ConnectionStatus.Unknown;
     private StepperStatus m_stepperStatus = StepperStatus.Unknown;
 
-    static final String m_UPDATE_STEPPER_INTENT = "update_stepper_intent";
+    static final String UPDATE_STEPPER_INTENT = "update_stepper_intent";
+
+
+
 
     enum ConnectionStatus {
         Idle, GotIP, Connecting, NoApFound, WrongPassword, ConnectFail, Unknown}
     enum StepperStatus {
         Initalisation, Stepping, Waiting, Ready, Unknown}
+    enum ESPStepperStatus {
+        Ready, Stepping, NotReady, Unknown}
 
     // default constructor
     ESPStepper() {
@@ -84,13 +93,20 @@ class ESPStepper implements Parcelable {
         return m_mmPerStep;
     }
 
-
     public void setCurrentIP(String i_ip) throws IllegalArgumentException {
         if (validIP(i_ip)) {
             m_currentIP = i_ip;
         } else {
             throw new IllegalArgumentException("IP address is not a valid address!");
         }
+    }
+
+    void setSpeed(int speed) {
+        this.m_speed = speed;
+    }
+
+    int speed() {
+        return m_speed;
     }
 
 
@@ -104,13 +120,31 @@ class ESPStepper implements Parcelable {
 
     Boolean hasConnection() {
         if (m_connectionStatus == ConnectionStatus.Idle ||
-            m_connectionStatus == ConnectionStatus.GotIP) {
+                m_connectionStatus == ConnectionStatus.GotIP) {
             return true;
         } else {
             return false;
         }
     }
 
+    public ESPStepperStatus getESPStatus() {
+        if (!hasConnection()) {
+            return ESPStepperStatus.NotReady;
+        }
+
+        switch (m_stepperStatus) {
+            case Unknown :
+                return ESPStepperStatus.NotReady;
+            case Ready:
+            case Waiting:
+                return ESPStepperStatus.Ready;
+            case Initalisation:
+            case Stepping:
+                return ESPStepperStatus.Stepping;
+            default:
+                return ESPStepperStatus.Unknown;
+        }
+    }
 
     private static boolean validIP(String ip) {
         try {
@@ -177,7 +211,7 @@ class ESPStepper implements Parcelable {
 
             @Override
             protected void onPostExecute(Object o) {
-                Intent intent = new Intent(m_UPDATE_STEPPER_INTENT);
+                Intent intent = new Intent(UPDATE_STEPPER_INTENT);
                 intent.putExtra(main.UpdateStringBroadcastMessage, true);
                 m_connectedAP = i_helper.getCurrentConnectionSSID();
                 LocalBroadcastManager.getInstance(i_context).sendBroadcast(intent);
@@ -190,7 +224,10 @@ class ESPStepper implements Parcelable {
         ESPStepper.ConnectionStatus espStatus = ESPStepper.ConnectionStatus.Unknown;
         try {
             JSONObject jObj = WifiHelper.getJson(ipAddress(), "client?command=status");
-            String statusString = jObj.getJSONObject("Status").getString("status");
+            String statusString = "";
+            if (jObj != null) {
+                statusString = jObj.getJSONObject("Status").getString("status");
+            }
             if (statusString.equals("AP found and connected")) {
                 espStatus = ESPStepper.ConnectionStatus.GotIP;
             }
@@ -206,17 +243,23 @@ class ESPStepper implements Parcelable {
         StepperStatus espStatus = StepperStatus.Unknown;
         try {
             JSONObject jObj = WifiHelper.getJson(ipAddress(), "config?command=stepper");
-            // get the status of the stepper
-            String statusString = jObj.getJSONObject("Stepper").
-                    getJSONObject("Stepper_Config").getString("status");
-            if (statusString.equals("Waiting")) {
-                espStatus = StepperStatus.Waiting;
-            } else if (statusString.equals("Initalisation")) {
-                espStatus = StepperStatus.Initalisation;
-            } else if (statusString.equals("Stepping")) {
-                espStatus = StepperStatus.Stepping;
-            } else if (statusString.equals("Ready")) {
-                espStatus = StepperStatus.Ready;
+            if (jObj != null) {
+                // get the status of the stepper
+                String statusString = jObj.getJSONObject("Stepper").
+                        getJSONObject("Stepper_Config").getString("status");
+                switch (statusString) {
+                    case "Waiting" :
+                        espStatus = StepperStatus.Waiting;
+                        break;
+                    case "Initalisation" :
+                    espStatus = StepperStatus.Initalisation;
+                        break;
+                    case "Stepping" :
+                    espStatus = StepperStatus.Stepping;
+                        break;
+                    case "Ready" :
+                    espStatus = StepperStatus.Ready;
+                }
             }
         } catch (JSONException e) {
             e.printStackTrace();
@@ -232,18 +275,43 @@ class ESPStepper implements Parcelable {
             @Override
             protected Object doInBackground(Object[] params) {
                 getConnectionStatus();
-                getStepperStatus();
+                if (m_connectionStatus != ConnectionStatus.Unknown) {
+                    getStepperStatus();
+                }
                 return "";
             }
 
             @Override
             protected void onPostExecute(Object i_object) {
-                Intent intent = new Intent(m_UPDATE_STEPPER_INTENT);
+                Intent intent = new Intent(UPDATE_STEPPER_INTENT);
                 intent.putExtra(main.UpdateStringBroadcastMessage, true);
                 LocalBroadcastManager.getInstance(i_context).sendBroadcast(intent);
             }
         }.execute();
 
+    }
+
+
+    @SuppressWarnings("unchecked")
+    void sendSpeed() {
+        final JSONObject outerObject;
+        try {
+            outerObject = new JSONObject().put(
+                    "Stepper", new JSONObject().put(
+                            "Stepper_Config", new JSONObject().put("step_interval", m_speed)));
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return;
+        }
+        new AsyncTask() {
+            @Override
+            protected Object doInBackground(Object[] obj) {
+                JSONObject firstObject = (JSONObject)obj[0];
+                Log.d(TAG,"send speed json object is:" + firstObject.toString());
+                //WifiHelper.sendJson(firstObject, m_currentIP, "config?command=stepper");
+                return "";
+            }
+        }.execute(outerObject);
     }
 
 
@@ -311,10 +379,15 @@ class ESPStepper implements Parcelable {
             @Override
             protected Object doInBackground(Object[] obj) {
                 JSONObject firstObject = (JSONObject)obj[0];
-                WifiHelper.sendJson(firstObject, m_currentIP, "config?command=wifi");
-                WifiHelper.getJson(m_currentIP,"config?command=reboot");
+                Log.d(TAG,firstObject.toString());
+                //WifiHelper.sendJson(firstObject, m_currentIP, "config?command=wifi");
+                //WifiHelper.getJson(m_currentIP,"config?command=reboot");
                 return "";
             }
         }.execute(outerObject);
+    }
+
+    public int getConvertDistanceInSteps(float i_distance) {
+        return (int)Math.round(i_distance/m_mmPerStep);
     }
 }

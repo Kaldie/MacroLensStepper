@@ -40,10 +40,10 @@ public class PasswordDialogFragment extends DialogFragment {
                 .setPositiveButton("OK", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int whichButton) {
                         String password = passwordEditText.getText().toString();
-                        Intent broadcastIntent = new Intent(PASSWORD_RECEIVED_INTENT_TAG);
-                        broadcastIntent.putExtra("AP", ssid);
-                        broadcastIntent.putExtra("Password", password);
-                        LocalBroadcastManager.getInstance(getActivity()).sendBroadcast(broadcastIntent);
+                        Intent intent = new Intent(PASSWORD_RECEIVED_INTENT_TAG);
+                        intent.putExtra("AP", ssid);
+                        intent.putExtra("Password", password);
+                        LocalBroadcastManager.getInstance(getActivity()).sendBroadcast(intent);
                     }
                 })
                 .create();

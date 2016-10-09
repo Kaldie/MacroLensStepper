@@ -91,6 +91,7 @@
         android:layout_height="wrap_content"
         android:hint="@string/current_status_text"
         android:textAppearance="?android:attr/textAppearanceMedium"
+        android:id="@+id/statusText"
         android:textColor="#000000"/>
 
 </LinearLayout>

@@ -9,9 +9,11 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 
+import android.security.keystore.UserNotAuthenticatedException;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Log;
+import android.widget.Toast;
 
 
 import org.json.JSONException;
@@ -29,6 +31,8 @@ import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -39,35 +43,19 @@ class WifiHelper {
     private static final String TAG = "WifiHelper";
     private WifiManager m_wifiManager;
     private String m_oldNetworkSSID;
-    private boolean m_forcedConnection;
 
     WifiHelper(WifiManager i_manager) {
         m_wifiManager = i_manager;
         m_oldNetworkSSID = getCurrentConnectionSSID();
-        m_forcedConnection = false;
     }
 
 
     ArrayList<String> getScannedWifiAPs() {
-        String currentConnection;
         ArrayList<String> wifiSDDs = new ArrayList<>();
-        currentConnection = getCurrentConnectionSSID();
-        if (!currentConnection.isEmpty()) {
-            wifiSDDs.add(currentConnection);
-        }
-
         List<ScanResult> wifiScanList = m_wifiManager.getScanResults();
-        String SSID;
-        for (int i = 1; i < wifiScanList.size(); i++) {
-            SSID = wifiScanList.get(i).SSID;
-            if (!wifiScanList.get(i).SSID.equals(currentConnection)) {
-                wifiSDDs.add((wifiScanList.get(i)).SSID);
-                if (SSID.contains("ESP")) {
-                    wifiSDDs.remove(wifiSDDs.indexOf(SSID));
-                    wifiSDDs.add(1, SSID);
-                    break;
-                }
-            }
+        for (int i = 0; i < wifiScanList.size(); i++) {
+            Log.d(TAG,wifiScanList.get(i).SSID);
+            wifiSDDs.add(wifiScanList.get(i).SSID);
         }
         return wifiSDDs;
     }
@@ -78,7 +66,6 @@ class WifiHelper {
         String currentConnectedSSID = "";
         WifiInfo currentWifiInfo = m_wifiManager.getConnectionInfo();
         SupplicantState currentWifiState = currentWifiInfo.getSupplicantState();
-        System.out.println("State is: " + currentWifiState.toString());
         switch (currentWifiState) {
             case ASSOCIATED:
             case ASSOCIATING:
@@ -98,71 +85,145 @@ class WifiHelper {
     @Nullable
     private WifiConfiguration getKnownWifiConfigForSSID(String i_SSID) {
         List<WifiConfiguration> wifiConfigurations = m_wifiManager.getConfiguredNetworks();
+        String properSSID;
         for (WifiConfiguration config : wifiConfigurations) {
-            if (config.SSID.equals(i_SSID)) {
-                System.out.println("Found a wifi config. Returning this");
-                return config;
+            if (config != null && config.SSID!=null) {
+                properSSID = WifiHelper.convertStringToValidSSID(config.SSID);
+                if (config.SSID.equals(i_SSID) ||
+                        properSSID.equals(i_SSID)) {
+                    System.out.println("Found a wifi config. Returning this");
+                    return config;
+                }
             }
         }
         return null;
     }
 
 
-    WifiConfiguration getWifiConfigForSSID(String i_SSID) {
+    WifiConfiguration getWifiConfigForSSID(String i_SSID, Boolean i_forceFresh) {
         WifiConfiguration wifiConfig = getKnownWifiConfigForSSID(i_SSID);
-        if (wifiConfig != null) {
+        if (wifiConfig != null && !i_forceFresh) {
             return wifiConfig;
         } else {
             return makeConfiguration(i_SSID);
         }
     }
 
+    // yea...java....no default params (got a nice solution...)
+    WifiConfiguration getWifiConfigForSSID(String i_SSID) {
+        return getWifiConfigForSSID(i_SSID, false);
+    }
+
+
+    private List<String> splitCapabilities(String i_capabilities) {
+        String[] array = i_capabilities.split("\\]");
+        List<String> capabilities = new ArrayList<>();
+        for (String capability : array) {
+            Character start = capability.charAt(0);
+            Character end = capability.charAt(capability.length()-1);
+            if (start == ']'|| start == '[') {
+                capability = capability.substring(1);
+            }
+            if (end == ']'|| end == '[') {
+                capability = capability.substring(0, capability.length() - 2);
+            }
+            capabilities.add(capability);
+        }
+        return capabilities;
+    }
+
+
+    private List<String> getConnectionTypes(List<String> i_splittedCapabilities) {
+        List<String> unsortedConnectionTypes = new ArrayList<>();
+        String method;
+        for (String capability : i_splittedCapabilities) {
+            method = capability.split("-")[0];
+            unsortedConnectionTypes.add(method);
+        }
+
+        Collections.sort(unsortedConnectionTypes,new Comparator<String>() {
+            int value(String input) {
+                if (input.equals("WPA2")) {
+                    return 3;
+                } else if (input.equals("WPA")) {
+                    return 2;
+                } else if (input.equals("WEP")) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            }
+
+            @Override
+            public int compare(String o1, String o2) {
+                int o1Value = value(o1);
+                int o2Value = value(o2);
+                if (o2Value == o1Value)
+                    return 0;
+                if (o1Value> o2Value)
+                    return 1;
+                else {
+                    return 0;
+                }
+            }
+        });
+        return unsortedConnectionTypes;
+    }
+
+
+    private String getCapabilitiesOfConnection(List<String> i_splittedCapabilities,
+                                               String i_connection) {
+        for (String capability : i_splittedCapabilities) {
+            if  (i_connection.equals(capability.split("-")[0])) {
+                return capability;
+            }
+        }
+        return "";
+    }
+
 
     private WifiConfiguration makeConfiguration(String i_ap) {
-        Log.d(TAG,"makeConfiguration!!");
+        Log.d(TAG, "makeConfiguration!!");
         List<ScanResult> scanResults = m_wifiManager.getScanResults();
         WifiConfiguration configuration = new WifiConfiguration();
         for (final ScanResult scanResult : scanResults) {
             scanResult.SSID = convertStringToValidSSID(scanResult.SSID);
             if (scanResult.SSID.equals(i_ap)) {
-                configuration.BSSID = scanResult.BSSID;
-                configuration.SSID = convertStringToValidSSID(scanResult.SSID);
-                System.out.println(scanResult.capabilities);
-                // Security mode
-                if (scanResult.capabilities.contains("LEAP")) {
-                    configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.LEAP);
-                } else if (scanResult.capabilities.contains("WPA")) {
-                    configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
-                } else if (scanResult.capabilities.contains("WPA2")) {
-                    configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
-                } else if (scanResult.capabilities.contains("SHARED")) {
-                    configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.SHARED);
-                }
-                // GroupCiphers
-                if (scanResult.capabilities.contains("CCMP")) {
-                    configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
-                } else if (scanResult.capabilities.contains("TKIP")) {
+                configuration.SSID = scanResult.SSID;
+                configuration.status = WifiConfiguration.Status.ENABLED;
+
+                List<String> capabilities = splitCapabilities(scanResult.capabilities);
+                String favConnection = getConnectionTypes(capabilities).get(0);
+                String capability = getCapabilitiesOfConnection(capabilities, favConnection);
+                configuration.allowedKeyManagement.clear();
+                configuration.allowedGroupCiphers.clear();
+                configuration.allowedAuthAlgorithms.clear();
+                configuration.allowedProtocols.clear();
+                configuration.allowedPairwiseCiphers.clear();
+
+                if (capability.contains("TKIP")) {
                     configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
-                } else if (scanResult.capabilities.contains("WEP40")) {
-                    configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
-                } else if (scanResult.capabilities.contains("WEP104")) {
-                    configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP104);
                 }
-                // Allowed protocols, always go for the highest
-                if (scanResult.capabilities.contains("WPA2")) {
-                    configuration.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-                } else if (scanResult.capabilities.contains("WPA")) {
-                    configuration.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+                if (capability.contains("CCMP")) {
+                    configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
                 }
-                // key management
-                if (scanResult.capabilities.contains("PSK")) {
-                    configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-                } else if (scanResult.capabilities.contains("EAP")) {
-                    configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_EAP);
-                } else if (scanResult.capabilities.contains("IEEE8021X")) {
-                    configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.IEEE8021X);
-                } else {
-                    configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+                switch (favConnection) {
+                    case "WEP" :
+                        configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+                        configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
+                        configuration.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP104);
+                        break;
+                    case "WPA":
+                    case "WPA2":
+                        configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+                        configuration.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN);
+                        configuration.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+                        configuration.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+                        configuration.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+                        configuration.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+                        break;
+                    default:
+                        configuration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
                 }
                 return configuration;
             }
@@ -198,71 +259,60 @@ class WifiHelper {
 
     boolean isPasswordKnown(WifiConfiguration i_wifiConfiguration) {
         // check if we need a password
-        if (i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.OPEN)) {
-            if (i_wifiConfiguration.preSharedKey != null && !i_wifiConfiguration.preSharedKey.isEmpty()) {
+        if (i_wifiConfiguration.allowedProtocols.get(WifiConfiguration.Protocol.RSN) ||
+                i_wifiConfiguration.allowedProtocols.get(WifiConfiguration.Protocol.WPA)) {
+            if (i_wifiConfiguration.preSharedKey != null && i_wifiConfiguration.preSharedKey.length() > 0)
                 return true;
-            }
-        } else if (i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.SHARED)) {
-            String wepKey = i_wifiConfiguration.wepKeys[i_wifiConfiguration.wepTxKeyIndex];
-            if (wepKey != null && !wepKey.isEmpty()) {
-                return true;
-            }
-        } else {
-            // no key management
-            return true;
         }
-        // there is key management, but there is no known password
+        if (i_wifiConfiguration.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE) && (
+                i_wifiConfiguration.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP104) ||
+                        i_wifiConfiguration.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP104))
+                ) {
+            if (i_wifiConfiguration.wepKeys[i_wifiConfiguration.wepTxKeyIndex].length() > 0) {
+                return true;
+            }
+        }
         return false;
     }
 
 
-    static Boolean hasPassword(WifiConfiguration i_wifiConfiguration) {
-        return i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.OPEN) ||
-                i_wifiConfiguration.allowedAuthAlgorithms.get(WifiConfiguration.AuthAlgorithm.SHARED) ||
-                i_wifiConfiguration.preSharedKey.length() != 0;
+    Boolean hasPassword(WifiConfiguration i_wifiConfiguration) {
+        WifiConfiguration config = makeConfiguration(i_wifiConfiguration.SSID);
+        return config.allowedProtocols.get(WifiConfiguration.Protocol.RSN) ||
+                config.allowedProtocols.get(WifiConfiguration.Protocol.WPA) ||
+                config.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP40) ||
+                config.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP104);
     }
 
 
-    void updateConfiguration(WifiConfiguration wifiConfiguration) {
-        if (getKnownWifiConfigForSSID(wifiConfiguration.SSID) != null) {
+    int updateConfiguration(WifiConfiguration wifiConfiguration) {
+        int newNetworkID;
+        WifiConfiguration knownConfig = getKnownWifiConfigForSSID(wifiConfiguration.SSID);
+        System.out.println(knownConfig.toString());
+        System.out.println(wifiConfiguration.toString());
+        if (knownConfig != null && knownConfig.BSSID != null) {
+            wifiConfiguration.networkId = knownConfig.networkId;
+            wifiConfiguration.priority = knownConfig.priority;
             // configuration is known update it
-            m_wifiManager.updateNetwork(wifiConfiguration);
+            Log.d(TAG,"Update network");
+            newNetworkID = m_wifiManager.updateNetwork(knownConfig);
+            m_wifiManager.enableNetwork(newNetworkID,false);
         } else {
-            int newNetworkID = m_wifiManager.addNetwork(wifiConfiguration);
+            newNetworkID= m_wifiManager.addNetwork(wifiConfiguration);
             if (newNetworkID != -1) {
                 m_wifiManager.enableNetwork(newNetworkID,false);
             }
-            System.out.println("New network id: " + newNetworkID);
         }
+        Log.d(TAG,"New network id: " + newNetworkID);
+        return newNetworkID;
     }
 
 
     boolean forceConnection(WifiConfiguration i_configuration) {
-        m_forcedConnection = true;
+        getWifiConfigForSSID(i_configuration.SSID);
         m_wifiManager.disconnect();
         m_wifiManager.enableNetwork(i_configuration.networkId,true);
         return m_wifiManager.reconnect();
-    }
-
-
-    void restoreOldConnection() {
-        // if the wifi helper is used to connect to a specific network, it will remember which network it previously was attached to.
-        // Calling this function will ensure that the previously attached network will be re-enabled
-        if (m_forcedConnection) {
-            List<WifiConfiguration> wifiConfigurations = m_wifiManager.getConfiguredNetworks();
-            if (wifiConfigurations != null) {
-                // for the connection
-                for (WifiConfiguration config : wifiConfigurations) {
-                    if (config.SSID.equals(m_oldNetworkSSID)) {
-                        forceConnection(config);
-                    }
-                }
-                // then enable the other networks
-                for (WifiConfiguration config : wifiConfigurations) {
-                    m_wifiManager.enableNetwork(config.networkId, false);
-                }
-            }
-        }
     }
 
 
@@ -308,7 +358,7 @@ class WifiHelper {
             e.printStackTrace();
         } finally {
             if (receive_socket != null)
-            receive_socket.close();
+                receive_socket.close();
         }
         return new String(packet.getData());
     }
@@ -400,5 +450,34 @@ class WifiHelper {
 
     static String sendJson(final JSONObject jsonObj, final String i_ip, final String i_addition) {
         return sendHtml(i_ip, i_addition, jsonObj.toString());
+    }
+
+    public void acceptPassword(String i_SSID, String i_password) {
+        if (i_password != null && !i_password.isEmpty() &&
+                i_SSID != null && !i_SSID.isEmpty()) {
+            i_SSID = WifiHelper.convertStringToValidSSID(i_SSID);
+            System.out.println("Password '" + i_password + "' is selected for ssid: " + i_SSID + " !");
+            WifiConfiguration wifiConfiguration = getWifiConfigForSSID(i_SSID, true);
+            Log.d(TAG,wifiConfiguration.toString());
+            if (wifiConfiguration.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP40) ||
+                    wifiConfiguration.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP104)) {
+                if (i_password.matches("^[0-9a-fA-F]+$")) {
+                    wifiConfiguration.wepKeys[0] = i_password;
+                } else {
+                    wifiConfiguration.wepKeys[0] = "\"" + i_password + "\"";
+                }
+                wifiConfiguration.wepTxKeyIndex = 0;
+            } else {
+                Log.d(TAG,"Updated the pre shared key.");
+                wifiConfiguration.preSharedKey = "\"" + i_password + "\"";
+            }
+
+            wifiConfiguration.networkId = updateConfiguration(wifiConfiguration);
+            if (wifiConfiguration.networkId == -1) {
+                Log.d(TAG,"Boo boo at updating the AP!");
+                return;
+            }
+            forceConnection(wifiConfiguration);
+        }
     }
 }
